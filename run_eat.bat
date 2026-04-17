@@ -1,21 +1,14 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-set "PYTHONPATH="
-set "CUDA_VISIBLE_DEVICES=0"
 
 :: ==============================================
-:: EffiDec3D Windows 训练脚本（PowerShell兼容版）
-:: 用法：
-::   run_eat.bat smoke     快速测试
-::   run_eat.bat train     正式训练
-::   run_eat.bat test      验证模型
+:: EffiDec3D Windows 训练脚本（无错最终版）
 :: ==============================================
 
 set "PROJ_DIR=D:\EffiDec3D_EAT\EffiDec3D"
 set "DATA_ROOT=D:\EffiDec3D_EAT\EffiDec3D_work"
 set "OUTPUT_DIR=%PROJ_DIR%\output_folder\eat_run1"
-set "CONDA_ENV=effidec3d"
 
 set "DATASET=EAT"
 set "NETWORK=3DUXNET_EffiDec3D"
@@ -58,7 +51,7 @@ if "%MODE_ARG%"=="smoke" (
     set WORKERS=0
     set OVERLAP=0.5
 ) else (
-    echo 错误：不支持的模式 %MODE_ARG%
+    echo 错误模式
     pause
     exit /b 1
 )
@@ -69,20 +62,14 @@ if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 echo.
 echo ======================================================
 echo  训练模式：%MODE_ARG%
-echo  数据集：%DATA_ROOT%
 echo ======================================================
 echo.
 
-:: ========== 强制激活环境，确保一定成功 ==========
-call D:\conda_envs\%CONDA_ENV%\Scripts\activate.bat
-
-:: ========== 强制打印信息 ==========
-echo [INFO] 当前Python：
+echo [INFO] Python 版本：
 python --version
-echo [INFO] 开始运行...
 echo.
 
-:: ========== 运行训练脚本 ==========
+:: ========== 运行 ==========
 python main_train_BTCV_TU.py ^
 --root "%DATA_ROOT%" ^
 --output "%OUTPUT_DIR%" ^
@@ -112,7 +99,7 @@ python main_train_BTCV_TU.py ^
 if %errorlevel% neq 0 (
     echo.
     echo ======================================================
-    echo  训练失败！错误代码：%errorlevel%
+    echo  训练失败！错误码：%errorlevel%
     echo ======================================================
     pause
     exit /b 1
@@ -122,5 +109,5 @@ echo.
 echo ======================================================
 echo  运行成功！
 echo ======================================================
-echo.
 pause
+

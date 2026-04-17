@@ -51,10 +51,6 @@ from medpy import metric
 from tqdm import tqdm
 import argparse
 
-import resource
-rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
-
 parser = argparse.ArgumentParser(description='3DUXNET w/ EffiDec3D hyperparameters for medical image segmentation')
 ## Input data hyperparameters
 parser.add_argument('--root', type=str, default='data', required=True, help='Root folder of all your images and labels')

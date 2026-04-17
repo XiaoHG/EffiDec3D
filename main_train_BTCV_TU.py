@@ -52,10 +52,6 @@ from medpy import metric
 from tqdm import tqdm
 import argparse
 
-import resource
-rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
-
 parser = argparse.ArgumentParser(description='3DUXNET w/ EffiDec3D hyperparameters for medical image segmentation')
 ## Input data hyperparameters
 parser.add_argument('--root', type=str, default='data', required=True, help='Root folder of all your images and labels')
@@ -501,7 +497,12 @@ else:
 t_dir = os.path.join(root_dir, 'tensorboard')
 if os.path.exists(t_dir) == False:
     os.makedirs(t_dir)
-writer = SummaryWriter(log_dir=t_dir)
+# writer = SummaryWriter(log_dir=t_dir)
+
+# 替换这一整段
+import os
+os.makedirs('./tf_logs', exist_ok=True)
+writer = SummaryWriter(log_dir='./tf_logs')
 
 def validation(epoch_iterator_val):
     model.eval()

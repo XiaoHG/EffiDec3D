@@ -1,0 +1,39 @@
+# ==============================
+# EffiDec3D - CUDA 版本依赖
+# 适用于 NVIDIA GPU + Windows / Linux
+# PyTorch CUDA 自动匹配
+# ==============================
+
+# 核心深度学习
+torch>=2.0.0
+torchvision>=0.15.0
+
+# 医学图像必备
+monai>=1.2.0
+nibabel>=5.0.0
+SimpleITK>=2.5.0
+
+# 科学计算
+numpy>=1.23.0
+scipy>=1.10.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# 数据增强
+batchgenerators>=0.25.0
+scikit-image>=0.24.0
+scikit-learn>=1.6.0
+
+# 训练工具
+tqdm
+pyyaml
+timm
+einops
+protobuf
+tensorboard
+
+# 工具库
+click
+pillow
+pandas
+python-dateutil

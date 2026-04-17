@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
-# EffiDec3D - train / test on EAT binary segmentation dataset
-# Dataset root: /Users/xiaohg/ai_class/model/EffiDec3D/EffiDec3D_work
-#   imagesTr/, labelsTr/  (train)
-#   imagesVal/, labelsVal/  (validation; also used for test metrics)
-#   imagesTs/ (symlink of val images, used for inference only)
-#
-# Usage:
-#   bash run_eat.sh smoke     # tiny run to verify pipeline (default)
-#   bash run_eat.sh train     # longer training
-#   bash run_eat.sh test      # run final validation with best ckpt
+# ==============================================================================
+# EffiDec3D - Training and Testing Script for EAT Binary Segmentation Dataset
+# ==============================================================================
 
 set -euo pipefail
 
 # ---------- Activate conda env ----------
 CONDA_BASE="$(conda info --base 2>/dev/null || echo /Users/xiaohg/miniconda3)"
-# shellcheck disable=SC1091
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate effidec3d
 
@@ -34,8 +26,10 @@ N_CHANNELS=1
 CHANNELS="48 96 192 384"
 N_DEC=48
 
+# ---------- 这里是你缺失的一行！必须加！ ----------
 MODE_ARG="${1:-smoke}"
 
+# ---------- Mode Configuration ----------
 case "${MODE_ARG}" in
   smoke)
     MODE="train"
@@ -50,8 +44,8 @@ case "${MODE_ARG}" in
     ;;
   train)
     MODE="train"
-    MAX_ITER=2000
-    EVAL_STEP=200
+    MAX_ITER=500
+    EVAL_STEP=50
     BATCH=1
     CROP=2
     LR=0.001
@@ -61,7 +55,7 @@ case "${MODE_ARG}" in
     ;;
   test)
     MODE="validation"
-    MAX_ITER=1         # not used in test; loop skipped when mode != train
+    MAX_ITER=1
     EVAL_STEP=1
     BATCH=1
     CROP=1
@@ -80,9 +74,8 @@ echo "[run_eat.sh] mode=${MODE_ARG} python=$(python --version)"
 echo "[run_eat.sh] DATA_ROOT=${DATA_ROOT}"
 echo "[run_eat.sh] OUTPUT_DIR=${OUTPUT_DIR}"
 
-# PYTORCH_ENABLE_MPS_FALLBACK: fall back to CPU for any ops unsupported on MPS.
+# ---------- Main Training/Evaluation Command ----------
 export PYTORCH_ENABLE_MPS_FALLBACK=1
-# PYTHONUNBUFFERED: unbuffered stdout for live progress.
 export PYTHONUNBUFFERED=1
 
 python main_train_BTCV_TU.py \

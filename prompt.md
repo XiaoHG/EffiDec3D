@@ -1,0 +1,1 @@
+请帮我结合https://github.com/SLDGroup/EffiDec3D这个项目代码和论文EffiDec3D: An Optimized Decoder for High-Performance and Efficient 3D Medical Image Segmentation，我要跑通这个项目的代码，我看了官方给的实例命令中有main_finetune_BTCV_TU.py这个文件，但是源代码中我并没有发现这个文件；请帮我生成一个.sh 脚本文件用于调用训练和测试，并帮我调试通过，要求用我自己的数据集我已经放在/Users/xiaohg/ai_class/model/EffiDec3D/EffiDec3D_work文件夹下面，请帮我跟进项目配置好，如果需要根据我的数据集创建文件也帮我创建好。

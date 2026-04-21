@@ -88,6 +88,9 @@ parser.add_argument('--gpu', type=str, default='0', help='your GPU number')
 parser.add_argument('--cache_rate', type=float, default=0.1, help='Cache rate to cache your dataset into GPUs')
 parser.add_argument('--num_workers', type=int, default=2, help='Number of workers')
 
+# xiaohg
+parser.add_argument('--enable_hafm', default=False, help='Enable HAFM module')
+
 args = parser.parse_args()
 
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
@@ -145,6 +148,9 @@ else:
     args.n_decoder_channels = int(args.n_decoder_channels)
 if args.ds == 'True':
     args.ds = True
+
+# xiaohg
+args.enable_hafm = args.enable_hafm == 'True'
     
 ## Load Networks
 device = DEVICE
@@ -160,7 +166,8 @@ if args.network == '3DUXNET_EffiDec3D':
         layer_scale_init_value=1e-6,
         spatial_dims=3,
         skip_aggregation=args.skip_aggregation,
-        resolution_factor=args.resolution_factor
+        resolution_factor=args.resolution_factor,
+        enable_hafm=args.enable_hafm
     ).to(device)
     
 elif args.network == 'SwinUNETR_EffiDec3D':

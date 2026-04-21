@@ -424,6 +424,7 @@ class UXNET_EffiDec3D(nn.Module):
         skip_aggregation: str = 'concatenation',
         resolution_factor: int = 2,
         spatial_dims=3,
+        enable_hafm: bool = False
     ) -> None:
         """
         Args:
@@ -474,6 +475,7 @@ class UXNET_EffiDec3D(nn.Module):
         
         # xiaohg add hafm
         self.hafm = HAFM(in_channels=n_decoder_channels, hu_low=-190, hu_high=-30)
+        self.enable_hafm = enable_hafm
 
         # self.classification = False
         # self.vit = ViT(
@@ -651,19 +653,21 @@ class UXNET_EffiDec3D(nn.Module):
         # Decoder Pass (start from 8x resolution)
 
         if self.resolution_factor <= 8:
-            enc_hidden = self.hafm(enc_hidden, x_in) # xiaohg
+            if self.enable_hafm:
+                enc_hidden = self.hafm(enc_hidden, x_in) # xiaohg
             dec3 = self.decoder5(enc_hidden, enc4 if hasattr(self, 'encoder4') else None)
             result = dec3
         if self.resolution_factor <= 4:
-            dec3 = self.hafm(dec3, x_in) # xiaohg
+            if self.enable_hafm:
+                dec3 = self.hafm(dec3, x_in) # xiaohg
             dec2 = self.decoder4(dec3, enc3 if hasattr(self, 'encoder3') else None)
             result = dec2
         if self.resolution_factor <= 2:
-            dec2 = self.hafm(dec2, x_in) # xiaohg
+            if self.enable_hafm:
+                dec2 = self.hafm(dec2, x_in) # xiaohg
             dec1 = self.decoder3(dec2, enc2 if hasattr(self, 'encoder2') else None)
             result = dec1
         if self.resolution_factor <= 1:
-            #dec1 = self.hafm(dec1, x_in)
             dec0 = self.decoder2(dec1, enc1 if hasattr(self, 'encoder1') else None)
             result = self.decoder1(dec0)
 

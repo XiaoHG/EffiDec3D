@@ -454,7 +454,7 @@ if 1 < 2:
     args.output = args.output + '_network_' + args.network + '_skip_aggregation_'+args.skip_aggregation
 else :
     if '3DUXNET' in args.network and 'EffiDec3D' in args.network:
-        args.output = args.output + '_network_' + args.network + '_fc' + str(args.channels[0]) + '_' + str(args.channels[1]) + '_' + str(args.channels[2]) + '_' + str(args.channels[3]) + '_n_decoder_channels' + str(args.n_decoder_channels) + '_rf'+str(args.resolution_factor)+'_skip_aggregation_'+args.skip_aggregation + '_roi' + str(args.img_size[0]) + 'x' + str(args.img_size[1]) + 'x' + str(args.img_size[2])+'_vb'+str(args.val_batch)+'_cs'+str(args.crop_sample)+'_overlap'+str(args.overlap) + '_ds' + str(args.ds) + '_pretrain_'+str(args.pretrain)+'_lr_'+str(args.lr)n
+        args.output = args.output + '_network_' + args.network + '_fc' + str(args.channels[0]) + '_' + str(args.channels[1]) + '_' + str(args.channels[2]) + '_' + str(args.channels[3]) + '_n_decoder_channels' + str(args.n_decoder_channels) + '_rf'+str(args.resolution_factor)+'_skip_aggregation_'+args.skip_aggregation + '_roi' + str(args.img_size[0]) + 'x' + str(args.img_size[1]) + 'x' + str(args.img_size[2])+'_vb'+str(args.val_batch)+'_cs'+str(args.crop_sample)+'_overlap'+str(args.overlap) + '_ds' + str(args.ds) + '_pretrain_'+str(args.pretrain)+'_lr_'+str(args.lr)
     elif 'EffiDec3D' in args.network:
         args.output = args.output + '_network_' + args.network + '_fs' + str(args.feature_size) + '_n_decoder_channels' + str(args.n_decoder_channels) + '_rf'+str(args.resolution_factor)+'_skip_aggregation_'+args.skip_aggregation + '_roi' + str(args.img_size[0]) + 'x' + str(args.img_size[1]) + 'x' + str(args.img_size[2])+'_vb'+str(args.val_batch)+'_cs'+str(args.crop_sample)+'_overlap'+str(args.overlap) + '_ds' + str(args.ds) + '_pretrain_'+str(args.pretrain)+'_lr_'+str(args.lr)
     elif '3DUXNET' in args.network:
@@ -462,9 +462,9 @@ else :
     else:
         args.output = args.output + '_network_' + args.network + '_fs' + str(args.feature_size) + '_roi' + str(args.img_size[0]) + 'x' + str(args.img_size[1]) + 'x' + str(args.img_size[2])+'_vb'+str(args.val_batch)+'_cs'+str(args.crop_sample)+'_overlap'+str(args.overlap) + '_ds' + str(args.ds) + '_pretrain_'+str(args.pretrain)+'_lr_'+str(args.lr)
 
-    root_dir = os.path.join(args.output,args.network,args.dataset)
-    if os.path.exists(root_dir) == False:
-        os.makedirs(root_dir)
+root_dir = os.path.join(args.output,args.network,args.dataset)
+if os.path.exists(root_dir) == False:
+    os.makedirs(root_dir)
 
 last_ckpt = os.path.join(root_dir, "last_model.pth")
 

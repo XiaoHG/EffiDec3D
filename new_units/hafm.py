@@ -121,7 +121,7 @@ def test_hafm_module():
     print("=" * 60)
     
     # 测试配置
-    batch_size = 1
+    batch_size = 2
     in_channels = 48
     spatial_size = (48, 48, 48)  # H, W, D
     

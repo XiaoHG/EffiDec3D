@@ -344,30 +344,31 @@ if __name__ == "__main__":
     # 使用示例
     print(f"\n使用示例:")
     print("""# 在您的评估代码中:
-# 1. 导入HDA模块
-from your_module import HUDistributionAgreement
+    # 1. 导入HDA模块
+    from your_module import HUDistributionAgreement
 
-# 2. 在评估循环中计算HDA
-for batch in test_dataloader:
-    ct_images, gt_masks = batch  # ct_images应为原始HU值
-    preds = model(ct_images)
-    
-    # 计算传统指标
-    dice = dice_score(preds, gt_masks)
-    hd95 = hausdorff_distance(preds, gt_masks)
-    
-    # 计算HDA（新增的组织特性一致性指标）
-    hda = HUDistributionAgreement.compute_hda(preds, gt_masks, ct_images)
-    
-    # 详细分析（可选）
-    stats = HUDistributionAgreement.analyze_hu_distributions(
-        preds[0], gt_masks[0], ct_images[0], debug=True
-    )
-    
-    print(f"Dice: {dice:.4f}, HD95: {hd95:.2f}, HDA: {hda:.4f}")
+    # 2. 在评估循环中计算HDA
+    for batch in test_dataloader:
+        ct_images, gt_masks = batch  # ct_images应为原始HU值
+        preds = model(ct_images)
+        
+        # 计算传统指标
+        dice = dice_score(preds, gt_masks)
+        hd95 = hausdorff_distance(preds, gt_masks)
+        
+        # 计算HDA（新增的组织特性一致性指标）
+        hda = HUDistributionAgreement.compute_hda(preds, gt_masks, ct_images)
+        
+        # 详细分析（可选）
+        stats = HUDistributionAgreement.analyze_hu_distributions(
+            preds[0], gt_masks[0], ct_images[0], debug=True
+        )
+        
+        print(f"Dice: {dice:.4f}, HD95: {hd95:.2f}, HDA: {hda:.4f}")
 
-# 3. 在论文中报告结果时:
-#    - 除了DSC、HD95等空间指标外，新增HDA指标
-#    - 说明HDA反映了分割结果在组织特性（HU值分布）上的准确性
-#    - 高HDA表明模型不仅分割了正确的区域，还分割了正确的组织类型
-""")
+    # 3. 在论文中报告结果时:
+    #    - 除了DSC、HD95等空间指标外，新增HDA指标
+    #    - 说明HDA反映了分割结果在组织特性（HU值分布）上的准确性
+    #    - 高HDA表明模型不仅分割了正确的区域，还分割了正确的组织类型
+    """
+          )

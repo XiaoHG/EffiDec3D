@@ -22,6 +22,7 @@ from typing import Union
 from lib.utils.tools.logger import Logger as Log
 from lib.models.tools.module_helper import ModuleHelper
 from networks.UXNet_3D.uxnet_encoder import uxnet_conv
+from new_units.lca import LightweightCrossAttention as LCA
 
 import logging
 logger = logging.getLogger(__name__)
@@ -97,11 +98,15 @@ class ModifiedUnetrUpBlock(nn.Module):
                 norm_name=norm_name,
             )
 
+        self.across_attention_lca = LCA(channels_encoder = 48, channels_decoder = 48)
+
     def forward(self, inp, skip):
         # number of channels for skip should equals to out_channels
         out = self.transp_conv(inp)
         if self.skip_aggregation=='concatenation':
             out = torch.cat((out, skip), dim=1)
+        elif self.skip_aggregation=='lca':
+            out = self.across_attention_lca(skip, out)
         else:
             out = out + skip
         out = self.conv_block(out)

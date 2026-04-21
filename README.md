@@ -30,7 +30,7 @@ conda activate effidec3denv
 ### Training:
 ```
 cd into EffiDec3D
-python main_finetune_BTCV_TU.py --root </data/btcv_trns/> --output output_folder/run1 --dataset BTCV13 --img_size 96 96 96 --n_channels 1 --network 3DUXNET_EffiDec3D --channels 48 96 192 384 --n_decoder_channels 48 --ds False --mode train --pretrain False --batch_size 1 --crop_sample 4 --lr 0.001 --optim AdamW --max_iter 45000  --eval_step 250 --val_batch 1 --gpu 0 --cache_rate 1.0 --num_workers 4 --overlap 0.7 #> output_folder/BTCV13_3DUXNET_EffiDec3D_loss_dsFalse_1out_96x96x96_lr1e3_itr45000_overlap070_run1.txt
+python main_train_BTCV_TU.py --root D:/EffiDec3D_EAT/EffiDec3D_work --output output_folder/3DUXNET_EffiDec3D --dataset EAT --img_size 96 96 96 --n_channels 1 --network 3DUXNET_EffiDec3D --channels 48 96 192 384 --n_decoder_channels 48 --ds False --mode train --pretrain False --batch_size 1 --crop_sample 4 --lr 0.001 --optim AdamW --max_iter 100 --eval_step 100 --val_batch 1 --gpu 0 --cache_rate 0.0 --num_workers 0 --overlap 0.7 --skip_aggregation addition
 
 ```
 

@@ -1,0 +1,71 @@
+# 日志
+*.log
+logs/
+runs/
+output/
+out/
+result/
+results/
+checkpoint/
+ckpt/
+checkpoints/
+
+# 数据集（绝对不传）
+data/
+dataset/
+raw_data/
+nifti/
+nii/
+nii.gz/
+
+# 环境与IDE
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.venv/
+conda_env/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 权重与模型文件
+*.pth
+*.pt
+*.pth.tar
+*.ckpt
+*.h5
+*.hdf5
+*.onnx
+*.bin
+*.pb
+*.caffemodel
+
+# 配置与临时文件
+*.yaml
+*.yml
+*.cfg
+*.json
+*.txt
+*.csv
+*.xlsx
+*.jpg
+*.png
+*.tif
+*.gz
+*.zip
+*.rar
+*.7z
+
+# TensorBoard
+tb_logs/
+tensorboard/
+events.out.*

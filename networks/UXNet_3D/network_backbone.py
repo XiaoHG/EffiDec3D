@@ -23,10 +23,6 @@ from lib.utils.tools.logger import Logger as Log
 from lib.models.tools.module_helper import ModuleHelper
 from networks.UXNet_3D.uxnet_encoder import uxnet_conv
 
-# xiaohg add lca&hafm
-from new_units.lca import LightweightCrossAttention as LCA
-from new_units.hafm import HUAwareModulation as HAFM
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -101,17 +97,11 @@ class ModifiedUnetrUpBlock(nn.Module):
                 norm_name=norm_name,
             )
 
-        # xiaohg add lca
-        self.across_attention_lca = LCA(channels_encoder = 48, channels_decoder = 48)
-
     def forward(self, inp, skip):
         # number of channels for skip should equals to out_channels
         out = self.transp_conv(inp)
         if self.skip_aggregation=='concatenation':
             out = torch.cat((out, skip), dim=1)
-        # xiaohg add lca
-        elif self.skip_aggregation=='lca':
-            out = self.across_attention_lca(skip, out)
         else:
             out = out + skip
         out = self.conv_block(out)
@@ -423,8 +413,7 @@ class UXNET_EffiDec3D(nn.Module):
         res_block: bool = True,
         skip_aggregation: str = 'concatenation',
         resolution_factor: int = 2,
-        spatial_dims=3,
-        enable_hafm: bool = False
+        spatial_dims=3
     ) -> None:
         """
         Args:
@@ -472,10 +461,6 @@ class UXNET_EffiDec3D(nn.Module):
             self.out_indice.append(i)
 
         self.spatial_dims = spatial_dims
-        
-        # xiaohg add hafm
-        self.hafm = HAFM(in_channels=n_decoder_channels, hu_low=-190, hu_high=-30)
-        self.enable_hafm = enable_hafm
 
         # self.classification = False
         # self.vit = ViT(
@@ -653,18 +638,12 @@ class UXNET_EffiDec3D(nn.Module):
         # Decoder Pass (start from 8x resolution)
 
         if self.resolution_factor <= 8:
-            if self.enable_hafm:
-                enc_hidden = self.hafm(enc_hidden, x_in) # xiaohg
             dec3 = self.decoder5(enc_hidden, enc4 if hasattr(self, 'encoder4') else None)
             result = dec3
         if self.resolution_factor <= 4:
-            if self.enable_hafm:
-                dec3 = self.hafm(dec3, x_in) # xiaohg
             dec2 = self.decoder4(dec3, enc3 if hasattr(self, 'encoder3') else None)
             result = dec2
         if self.resolution_factor <= 2:
-            if self.enable_hafm:
-                dec2 = self.hafm(dec2, x_in) # xiaohg
             dec1 = self.decoder3(dec2, enc2 if hasattr(self, 'encoder2') else None)
             result = dec1
         if self.resolution_factor <= 1:

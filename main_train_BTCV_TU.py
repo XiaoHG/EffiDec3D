@@ -52,10 +52,6 @@ from medpy import metric
 from tqdm import tqdm
 import argparse
 
-# xiaohg
-from new_units.hccl import HUConsistencyLoss
-from new_units.hda import HUDistributionAgreement
-
 parser = argparse.ArgumentParser(description='3DUXNET w/ EffiDec3D hyperparameters for medical image segmentation')
 ## Input data hyperparameters
 parser.add_argument('--root', type=str, default='data', required=True, help='Root folder of all your images and labels')
@@ -91,11 +87,6 @@ parser.add_argument('--overlap_mode', type=str, default='constant', help='overla
 parser.add_argument('--gpu', type=str, default='0', help='your GPU number')
 parser.add_argument('--cache_rate', type=float, default=0.1, help='Cache rate to cache your dataset into GPUs')
 parser.add_argument('--num_workers', type=int, default=2, help='Number of workers')
-
-# xiaohg
-parser.add_argument('--enable_hafm', default=False, help='Enable HAFM module')
-parser.add_argument('--enable_hccl', default=False, help='Enable HCCL module')
-parser.add_argument('--enable_hda', default=False, help='Enable HDA module')
 
 args = parser.parse_args()
 
@@ -154,11 +145,6 @@ else:
     args.n_decoder_channels = int(args.n_decoder_channels)
 if args.ds == 'True':
     args.ds = True
-
-# xiaohg
-args.enable_hafm = args.enable_hafm == 'True'
-args.enable_hccl = args.enable_hccl == 'True'
-args.enable_hda = args.enable_hda == 'True'
     
 ## Load Networks
 device = DEVICE
@@ -174,8 +160,7 @@ if args.network == '3DUXNET_EffiDec3D':
         layer_scale_init_value=1e-6,
         spatial_dims=3,
         skip_aggregation=args.skip_aggregation,
-        resolution_factor=args.resolution_factor,
-        enable_hafm=args.enable_hafm
+        resolution_factor=args.resolution_factor
     ).to(device)
     
 elif args.network == 'SwinUNETR_EffiDec3D':
@@ -463,7 +448,7 @@ elif args.optim == 'Adam':
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 print('Optimizer for training: {}, learning rate: {}'.format(args.optim, args.lr))
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.9, patience=1000)
-scaler = GradScaler()
+scaler = torch.amp.GradScaler('cuda')
 
 if 1 < 2:
     args.output = args.output + '_network_' + args.network + '_skip_aggregation_'+args.skip_aggregation
@@ -536,7 +521,7 @@ def validation(epoch_iterator_val):
                 val_labels[val_labels==13] = 0
                 val_labels[val_labels==11] = 5
             
-            with autocast(enabled=False):
+            with torch.amp.autocast('cuda', enabled=False):
                 val_outputs = sliding_window_inference_1out(val_inputs, (args.img_size[0], args.img_size[1], args.img_size[2]), args.val_batch, model, overlap=args.overlap)
                 val_labels_list = decollate_batch(val_labels)
                 val_labels_convert = [
@@ -649,376 +634,7 @@ def hda_validation():
         return None
 
 
-def train(global_step, train_loader, dice_val_best, global_step_best, use_hccl=True, use_hda=False):
-    """
-    训练函数，支持选择性应用HU一致性约束损失（HCCL）。
-    
-    参数:
-        use_hccl (bool): 是否应用HCCL损失，默认为True
-        use_hda (bool): 是否启用HDA验证，默认为False
-    """
-    model.train()
-    epoch_loss = 0
-    step = 0
-    
-    # 1. 根据use_hccl参数决定是否初始化HCCL模块
-    if use_hccl:
-        # 初始化HCCL模块（假设已在外部导入HUConsistencyLoss类）
-        hccl_loss = HUConsistencyLoss(
-            target_hu_mean=-110.0,
-            hu_tolerance=40.0,
-            loss_weight=0.1,
-            hu_range=(-190, -30)
-        )
-        hccl_loss = hccl_loss.to(device)
-        hccl_loss.train()  # 设置为训练模式
-        print(f"[HCCL] HU一致性约束损失已启用 (权重={hccl_loss.weight})")
-    else:
-        print("[HCCL] HU一致性约束损失已禁用")
-    
-    epoch_iterator = tqdm(
-        train_loader, desc="Training (X / X Steps) (loss=X.X)", dynamic_ncols=True
-    )
-    
-    for step, batch in enumerate(epoch_iterator):
-        step += 1
-        
-        # 加载数据
-        x, y = (_to_device(batch["image"]), _to_device(batch["label"]))
-        
-        # 获取原始HU值的CT图像（无论是否使用HCCL都加载，以备后用）
-        ct_raw = _to_device(batch.get("image_raw", x))
-        
-        with autocast(enabled=False):
-            p = model(x)
-            P = []
-            if type(p) is not list:
-                P.append(p)
-            else:
-                P = p
-            
-            # 原有的类别重映射逻辑
-            if out_classes == 9:       
-                y[y==5] = 0
-                y[y==9] = 0
-                y[y==10] = 0
-                y[y==12] = 0
-                y[y==13] = 0
-                y[y==11] = 5
-            
-            # 确定使用的输出尺度
-            if args.ds == True:
-                ss = [[0],[1],[2],[3],[4]]
-            else:
-                ss = [[0]]
-
-            loss = 0.0
-            seg_loss_total = 0.0
-            hccl_loss_total = 0.0
-            
-            for s in ss:
-                iout = 0.0
-                if(s==[]):
-                    continue
-                for idx in range(len(s)):
-                    iout += F.interpolate(P[s[idx]], (y.shape[-3], y.shape[-2], y.shape[-1]), mode='trilinear')
-                
-                # 计算基础分割损失
-                current_seg_loss = loss_function(iout, y)
-                seg_loss_total += current_seg_loss
-                
-                # *** 根据use_hccl参数决定是否计算HCCL损失 ***
-                if use_hccl:
-                    current_hccl_loss = hccl_loss(iout, ct_raw)
-                    hccl_loss_total += current_hccl_loss
-                    # 总损失 = 分割损失 + HU一致性损失
-                    loss += current_seg_loss + current_hccl_loss
-                else:
-                    # 仅使用分割损失
-                    loss += current_seg_loss
-        
-        # 梯度缩放与反向传播
-        scaler.scale(loss).backward()
-        
-        # 更新权重
-        scaler.step(optimizer)
-        scaler.update()
-        
-        epoch_loss += loss.item()
-        optimizer.zero_grad()
-        
-        # 更新进度条描述，根据是否使用HCCL显示不同的信息
-        if use_hccl:
-            epoch_iterator.set_description(
-                "Training (%d / %d Steps) (total=%2.5f, seg=%2.5f, hccl=%2.5f)" % (
-                    global_step, max_iterations, loss.item(), seg_loss_total.item(), hccl_loss_total.item()
-                )
-            )
-        else:
-            epoch_iterator.set_description(
-                "Training (%d / %d Steps) (loss=%2.5f)" % (
-                    global_step, max_iterations, loss.item()
-                )
-            )
-        
-        # 记录损失到TensorBoard
-        writer.add_scalar('Training_Segmentation_Loss', seg_loss_total.item(), global_step)
-        
-        if use_hccl:
-            writer.add_scalar('Training_HU_Consistency_Loss', hccl_loss_total.item(), global_step)
-        
-        writer.add_scalar('Training_Total_Loss', loss.item(), global_step)
-
-        # 验证与模型保存逻辑（保持不变，仅添加HDA选项）
-        if ( global_step % eval_num == 0 and global_step != 0 ) or global_step == max_iterations:
-            epoch_iterator_val = tqdm(
-                val_loader, desc="Validate (X / X Steps) (dice=X.X)", dynamic_ncols=True
-            )
-            dice_val = validation(epoch_iterator_val)
-            epoch_loss /= step
-            epoch_loss_values.append(epoch_loss)
-            metric_values.append(dice_val)
-            
-            # 如果启用HDA，执行HDA验证
-            hda_score = None
-            if use_hda:
-                # 保存当前模型模式
-                was_training = model.training
-                
-                # 执行HDA验证
-                hda_score = hda_validation()
-                
-                # 恢复模型模式
-                if was_training:
-                    model.train()
-                else:
-                    model.eval()
-                
-                # 更新进度条描述以包含HDA信息
-                if hda_score is not None:
-                    epoch_iterator_val.set_description(
-                        "Validate (%d / %d Steps) (dice=%.4f, hda=%.4f)" % (
-                            global_step, max_iterations, dice_val, hda_score
-                        )
-                    )
-                    
-                    # 使用综合评分进行模型保存决策
-                    combined_score = 0.7 * dice_val + 0.3 * hda_score
-                    
-                    if combined_score > dice_val_best:
-                        dice_val_best = combined_score
-                        global_step_best = global_step
-                        torch.save(
-                            model.state_dict(), os.path.join(root_dir, "best_metric_model.pth")
-                        )
-                        print(
-                            "[HDA] Model Saved! Best Combined Score: {:.4f} (Dice: {:.4f}, HDA: {:.4f})".format(
-                                dice_val_best, dice_val, hda_score
-                            )
-                        )
-                    else:
-                        print(
-                            "[HDA] Model Not Saved! Best Combined Score: {:.4f} (Dice: {:.4f}, HDA: {:.4f})".format(
-                                dice_val_best, dice_val, hda_score
-                            )
-                        )
-                else:
-                    # HDA计算失败，回退到传统Dice评估
-                    if dice_val > dice_val_best:
-                        dice_val_best = dice_val
-                        global_step_best = global_step
-                        torch.save(
-                            model.state_dict(), os.path.join(root_dir, "best_metric_model.pth")
-                        )
-                        print(
-                            "Model Was Saved ! Current Best Avg. Dice: {} Current Avg. Dice: {}".format(
-                                dice_val_best, dice_val
-                            )
-                        )
-                    else:
-                        print(
-                            "Model Was Not Saved ! Current Best Avg. Dice: {} Current Avg. Dice: {}".format(
-                                dice_val_best, dice_val
-                            )
-                        )
-            else:
-                # 传统Dice评估
-                if dice_val > dice_val_best:
-                    dice_val_best = dice_val
-                    global_step_best = global_step
-                    torch.save(
-                        model.state_dict(), os.path.join(root_dir, "best_metric_model.pth")
-                    )
-                    print(
-                        "Model Was Saved ! Current Best Avg. Dice: {} Current Avg. Dice: {}".format(
-                            dice_val_best, dice_val
-                        )
-                    )
-                else:
-                    print(
-                        "Model Was Not Saved ! Current Best Avg. Dice: {} Current Avg. Dice: {}".format(
-                            dice_val_best, dice_val
-                        )
-                    )
-        
-        global_step += 1
-    
-    return global_step, dice_val_best, global_step_best
-
-
-def train_with_hccl(global_step, train_loader, dice_val_best, global_step_best, use_hccl=True):
-    """
-    训练函数，支持选择性应用HU一致性约束损失（HCCL）。
-    
-    参数:
-        use_hccl (bool): 是否应用HCCL损失，默认为True
-    """
-    model.train()
-    epoch_loss = 0
-    step = 0
-    
-    # 1. 根据use_hccl参数决定是否初始化HCCL模块
-    if use_hccl:
-        # 初始化HCCL模块（假设已在外部导入HUConsistencyLoss类）
-        hccl_loss = HUConsistencyLoss(
-            target_hu_mean=-110.0,
-            hu_tolerance=40.0,
-            loss_weight=0.1,
-            hu_range=(-190, -30)
-        )
-        hccl_loss = hccl_loss.to(device)
-        hccl_loss.train()  # 设置为训练模式
-        print(f"[HCCL] HU一致性约束损失已启用 (权重={hccl_loss.weight})")
-    else:
-        print("[HCCL] HU一致性约束损失已禁用")
-    
-    epoch_iterator = tqdm(
-        train_loader, desc="Training (X / X Steps) (loss=X.X)", dynamic_ncols=True
-    )
-    
-    for step, batch in enumerate(epoch_iterator):
-        step += 1
-        
-        # 加载数据
-        x, y = (_to_device(batch["image"]), _to_device(batch["label"]))
-        
-        # 获取原始HU值的CT图像（无论是否使用HCCL都加载，以备后用）
-        ct_raw = _to_device(batch.get("image_raw", x))
-        
-        with autocast(enabled=False):
-            p = model(x)
-            P = []
-            if type(p) is not list:
-                P.append(p)
-            else:
-                P = p
-            
-            # 原有的类别重映射逻辑
-            if out_classes == 9:       
-                y[y==5] = 0
-                y[y==9] = 0
-                y[y==10] = 0
-                y[y==12] = 0
-                y[y==13] = 0
-                y[y==11] = 5
-            
-            # 确定使用的输出尺度
-            if args.ds == True:
-                ss = [[0],[1],[2],[3],[4]]
-            else:
-                ss = [[0]]
-
-            loss = 0.0
-            seg_loss_total = 0.0
-            hccl_loss_total = 0.0
-            
-            for s in ss:
-                iout = 0.0
-                if(s==[]):
-                    continue
-                for idx in range(len(s)):
-                    iout += F.interpolate(P[s[idx]], (y.shape[-3], y.shape[-2], y.shape[-1]), mode='trilinear')
-                
-                # 计算基础分割损失
-                current_seg_loss = loss_function(iout, y)
-                seg_loss_total += current_seg_loss
-                
-                # *** 根据use_hccl参数决定是否计算HCCL损失 ***
-                if use_hccl:
-                    current_hccl_loss = hccl_loss(iout, ct_raw)
-                    hccl_loss_total += current_hccl_loss
-                    # 总损失 = 分割损失 + HU一致性损失
-                    loss += current_seg_loss + current_hccl_loss
-                else:
-                    # 仅使用分割损失
-                    loss += current_seg_loss
-        
-        # 梯度缩放与反向传播
-        scaler.scale(loss).backward()
-        
-        # 更新权重
-        scaler.step(optimizer)
-        scaler.update()
-        
-        epoch_loss += loss.item()
-        optimizer.zero_grad()
-        
-        # 更新进度条描述，根据是否使用HCCL显示不同的信息
-        if use_hccl:
-            epoch_iterator.set_description(
-                "Training (%d / %d Steps) (total=%2.5f, seg=%2.5f, hccl=%2.5f)" % (
-                    global_step, max_iterations, loss.item(), seg_loss_total.item(), hccl_loss_total.item()
-                )
-            )
-        else:
-            epoch_iterator.set_description(
-                "Training (%d / %d Steps) (loss=%2.5f)" % (
-                    global_step, max_iterations, loss.item()
-                )
-            )
-        
-        # 记录损失到TensorBoard
-        writer.add_scalar('Training_Segmentation_Loss', seg_loss_total.item(), global_step)
-        
-        if use_hccl:
-            writer.add_scalar('Training_HU_Consistency_Loss', hccl_loss_total.item(), global_step)
-        
-        writer.add_scalar('Training_Total_Loss', loss.item(), global_step)
-        
-
-        # 验证与模型保存逻辑（保持不变）
-        if ( global_step % eval_num == 0 and global_step != 0 ) or global_step == max_iterations:
-            epoch_iterator_val = tqdm(
-                val_loader, desc="Validate (X / X Steps) (dice=X.X)", dynamic_ncols=True
-            )
-            dice_val = validation(epoch_iterator_val)
-            epoch_loss /= step
-            epoch_loss_values.append(epoch_loss)
-            metric_values.append(dice_val)
-            
-            if dice_val > dice_val_best:
-                dice_val_best = dice_val
-                global_step_best = global_step
-                torch.save(
-                    model.state_dict(), os.path.join(root_dir, "best_metric_model.pth")
-                )
-                print(
-                    "Model Was Saved ! Current Best Avg. Dice: {} Current Avg. Dice: {}".format(
-                        dice_val_best, dice_val
-                    )
-                )
-            else:
-                print(
-                    "Model Was Not Saved ! Current Best Avg. Dice: {} Current Avg. Dice: {}".format(
-                        dice_val_best, dice_val
-                    )
-                )
-        
-        global_step += 1
-    
-    return global_step, dice_val_best, global_step_best
-
-def train_original(global_step, train_loader, dice_val_best, global_step_best):
+def train(global_step, train_loader, dice_val_best, global_step_best):
     model.train()
     epoch_loss = 0
     step = 0
@@ -1029,7 +645,7 @@ def train_original(global_step, train_loader, dice_val_best, global_step_best):
     for step, batch in enumerate(epoch_iterator):
         step += 1
         x, y = (_to_device(batch["image"]), _to_device(batch["label"]))
-        with autocast(enabled=False):
+        with torch.amp.autocast('cuda', enabled=False):
             p = model(x)
             P = []
             if type(p) is not list:
@@ -1122,8 +738,7 @@ metric_values = []
 if args.mode == 'train':
     while global_step < max_iterations:
         global_step, dice_val_best, global_step_best = train(
-            global_step, train_loader, dice_val_best, global_step_best, 
-            use_hccl=args.enable_hccl, use_hda=args.enable_hda
+            global_step, train_loader, dice_val_best, global_step_best
         )
 
 model.load_state_dict(torch.load(os.path.join(root_dir, "best_metric_model.pth"), map_location=device))
@@ -1189,7 +804,7 @@ def validation_last(epoch_iterator_val):
                 val_labels[val_labels == 13] = 0
                 val_labels[val_labels == 11] = 5
             
-            with autocast(enabled=False):
+            with torch.amp.autocast('cuda', enabled=False):
                 val_outputs = sliding_window_inference_1out(
                     val_inputs, 
                     (args.img_size[0], args.img_size[1], args.img_size[2]), 
@@ -1323,7 +938,7 @@ def validation_save(epoch_iterator_val):
                 val_labels[val_labels == 13] = 0
                 val_labels[val_labels == 11] = 5
             
-            with autocast(enabled=False):
+            with torch.amp.autocast('cuda', enabled=False):
                 val_outputs = sliding_window_inference_1out(
                     val_inputs, 
                     (args.img_size[0], args.img_size[1], args.img_size[2]), 

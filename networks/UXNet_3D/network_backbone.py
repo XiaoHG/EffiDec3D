@@ -23,6 +23,8 @@ from lib.utils.tools.logger import Logger as Log
 from lib.models.tools.module_helper import ModuleHelper
 from networks.UXNet_3D.uxnet_encoder import uxnet_conv
 
+from ip_units.hugca import HUDensityCrossAttention
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,93 @@ def np2th(weights, conv=False):
     if conv:
         weights = weights.transpose([3, 2, 0, 1])
     return torch.from_numpy(weights)
+
+class ModifiedUnetrUpBlock_HUGCA(nn.Module):
+    """
+    An upsampling module that can be used for UNETR: "Hatamizadeh et al.,
+    UNETR: Transformers for 3D Medical Image Segmentation <https://arxiv.org/abs/2103.10504>"
+    """
+
+    def __init__(
+        self,
+        spatial_dims: int,
+        in_channels: int,
+        out_channels: int,
+        kernel_size,
+        upsample_kernel_size ,
+        norm_name,
+        res_block = False,
+        skip_aggregation = 'concatenation', 
+    ) -> None:
+        """
+        Args:
+            spatial_dims: number of spatial dimensions.
+            in_channels: number of input channels.
+            out_channels: number of output channels.
+            kernel_size: convolution kernel size.
+            upsample_kernel_size: convolution kernel size for transposed convolution layers.
+            norm_name: feature normalization type and arguments.
+            res_block: bool argument to determine if residual block is used.
+            skip_aggregation: type of skip aggregation, addition or concatenation 
+        """
+
+        super().__init__()
+        self.skip_aggregation = skip_aggregation
+        in_out_channels = out_channels
+        if self.skip_aggregation =='concatenation':
+            in_out_channels = out_channels + out_channels
+        upsample_stride = upsample_kernel_size
+        self.transp_conv = get_conv_layer(
+            spatial_dims,
+            in_channels,
+            out_channels,
+            kernel_size=upsample_kernel_size,
+            stride=upsample_stride,
+            conv_only=True,
+            is_transposed=True,
+        )
+
+        if res_block:
+            self.conv_block = UnetResBlock(
+                spatial_dims,
+                in_out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                stride=1,
+                norm_name=norm_name,
+            )
+        else:
+            self.conv_block = UnetBasicBlock(  # type: ignore
+                spatial_dims,
+                in_out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                stride=1,
+                norm_name=norm_name,
+            )
+
+        # xiaohg
+        self.hu_attn_layers = HUDensityCrossAttention(dim=48, num_heads=4, use_linear_attn=True)
+
+    def forward(self, inp, skip, x_in):
+        # number of channels for skip should equals to out_channels
+        out = self.transp_conv(inp)
+
+        # ---------- 构建 CT 金字塔（与各跳跃连接层空间尺寸对齐） ----------
+        def get_ct_down(target_feat):
+            # 将输入 x_in 下采样到与 target_feat 相同的空间尺寸
+            return F.interpolate(x_in, size=target_feat.shape[2:], 
+                                mode='trilinear', align_corners=False)
+
+        if self.skip_aggregation=='concatenation':
+            out = torch.cat((out, skip), dim=1)
+        elif self.skip_aggregation=='hugca':
+            ct_down = get_ct_down(out)
+            out = self.hu_attn_layers(out, skip, ct_down)
+        else:
+            out = out + skip
+        out = self.conv_block(out)
+        return out
 
 class ModifiedUnetrUpBlock(nn.Module):
     """
@@ -536,7 +625,7 @@ class UXNET_EffiDec3D(nn.Module):
             )
             self.cls_head_in_channels = self.n_decoder_channels
         if self.resolution_factor <= 8:
-            self.decoder5 = ModifiedUnetrUpBlock(
+            self.decoder5 = ModifiedUnetrUpBlock_HUGCA(
                 spatial_dims=spatial_dims,
                 in_channels=self.n_decoder_channels,
                 out_channels=self.n_decoder_channels,
@@ -548,7 +637,7 @@ class UXNET_EffiDec3D(nn.Module):
             )
             self.cls_head_in_channels = self.n_decoder_channels
         if self.resolution_factor <= 4:
-            self.decoder4 = ModifiedUnetrUpBlock(
+            self.decoder4 = ModifiedUnetrUpBlock_HUGCA(
                 spatial_dims=spatial_dims,
                 in_channels=self.n_decoder_channels,
                 out_channels=self.n_decoder_channels,
@@ -560,7 +649,7 @@ class UXNET_EffiDec3D(nn.Module):
             )
             self.cls_head_in_channels = self.n_decoder_channels
         if self.resolution_factor <= 2:
-            self.decoder3 = ModifiedUnetrUpBlock(
+            self.decoder3 = ModifiedUnetrUpBlock_HUGCA(
                 spatial_dims=spatial_dims,
                 in_channels=self.n_decoder_channels,
                 out_channels=self.n_channels_enc2_dec3,
@@ -572,7 +661,7 @@ class UXNET_EffiDec3D(nn.Module):
             )
             self.cls_head_in_channels = self.n_channels_enc2_dec3
         if self.resolution_factor <= 1:
-            self.decoder2 = ModifiedUnetrUpBlock(
+            self.decoder2 = ModifiedUnetrUpBlock_HUGCA(
                 spatial_dims=spatial_dims,
                 in_channels=self.n_channels_enc2_dec3,
                 out_channels=self.n_channels_enc2_dec3,
@@ -638,16 +727,16 @@ class UXNET_EffiDec3D(nn.Module):
         # Decoder Pass (start from 8x resolution)
 
         if self.resolution_factor <= 8:
-            dec3 = self.decoder5(enc_hidden, enc4 if hasattr(self, 'encoder4') else None)
+            dec3 = self.decoder5(enc_hidden, enc4 if hasattr(self, 'encoder4') else None, x_in)
             result = dec3
         if self.resolution_factor <= 4:
-            dec2 = self.decoder4(dec3, enc3 if hasattr(self, 'encoder3') else None)
+            dec2 = self.decoder4(dec3, enc3 if hasattr(self, 'encoder3') else None, x_in)
             result = dec2
         if self.resolution_factor <= 2:
-            dec1 = self.decoder3(dec2, enc2 if hasattr(self, 'encoder2') else None)
+            dec1 = self.decoder3(dec2, enc2 if hasattr(self, 'encoder2') else None, x_in)
             result = dec1
         if self.resolution_factor <= 1:
-            dec0 = self.decoder2(dec1, enc1 if hasattr(self, 'encoder1') else None)
+            dec0 = self.decoder2(dec1, enc1 if hasattr(self, 'encoder1') else None, x_in)
             result = self.decoder1(dec0)
 
         ## feat = self.conv_proj(dec4)

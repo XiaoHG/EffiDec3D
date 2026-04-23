@@ -88,6 +88,8 @@ parser.add_argument('--gpu', type=str, default='0', help='your GPU number')
 parser.add_argument('--cache_rate', type=float, default=0.1, help='Cache rate to cache your dataset into GPUs')
 parser.add_argument('--num_workers', type=int, default=2, help='Number of workers')
 
+parser.add_argument('--enable_hugca', default=False, help='Enable HUGCA')
+
 args = parser.parse_args()
 
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
@@ -145,6 +147,9 @@ else:
     args.n_decoder_channels = int(args.n_decoder_channels)
 if args.ds == 'True':
     args.ds = True
+
+#xiaohg
+args.enable_hugca = args.enable_hugca == 'True'
     
 ## Load Networks
 device = DEVICE
@@ -160,7 +165,9 @@ if args.network == '3DUXNET_EffiDec3D':
         layer_scale_init_value=1e-6,
         spatial_dims=3,
         skip_aggregation=args.skip_aggregation,
-        resolution_factor=args.resolution_factor
+        resolution_factor=args.resolution_factor,
+        use_hu_attention=args.enable_hugca,
+        hu_attn_num_heads=4
     ).to(device)
     
 elif args.network == 'SwinUNETR_EffiDec3D':
